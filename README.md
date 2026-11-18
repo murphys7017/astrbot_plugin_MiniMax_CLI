@@ -1,5 +1,8 @@
 # astrbot_plugin_MiniMax_CLI
 
+**AG99 定制版本**　murphys7017 为 AG99 桌宠维护的修改保存在 [`codex/ag99-runtime` 分支](https://github.com/murphys7017/astrbot_plugin_MiniMax_CLI/tree/codex/ag99-runtime)。该分支的 README 记录了与上游的具体差异。 [上游项目](https://github.com/tanggetian/astrbot_plugin_MiniMax_CLI)
+
+
 基于 `mmx-cli` 的 AstrBot 插件，用来把 MiniMax 的文本、图片、视频、音乐、纯音乐、语音、视觉理解和搜索能力接入 AstrBot。
 
 MiniMax 插件负责生成和媒体结果策略。如果需要跨容器/跨设备文件发送，推荐配合使用 `astrbot_plugin_file_sender`。
