@@ -2,7 +2,7 @@
   "api_key": {
     "description": "MiniMax API Key",
     "type": "string",
-    "hint": "请在 MiniMax 开放平台 Token Plan 页面获取 sk- 开头的 API Key，并在此处填写。插件会通过 mmx auth login --api-key 使用该密钥登录 CLI。若运行环境已经提前完成 mmx 登录，则 status/quota 可在未填写该项时继续使用。",
+    "hint": "请在 MiniMax 开放平台 Token Plan 页面获取 sk- 开头的 API Key，并在此处填写。插件会把登录凭据保存到自己的数据目录，不修改用户主目录下的 ~/.mmx 配置。若运行环境已经在插件数据目录完成登录，则 status/quota 可在未填写该项时继续使用。",
     "obvious_hint": true,
     "default": ""
   },
@@ -15,7 +15,7 @@
   "auto_login": {
     "description": "插件初始化时自动登录 MiniMax CLI",
     "type": "bool",
-    "hint": "开启后，插件加载时会使用上面的 API Key 执行 mmx auth login。",
+    "hint": "开启后，插件加载时会使用上面的 API Key 登录，并把 mmx 配置保存在插件自己的数据目录。",
     "default": true
   },
   "enable_llm_tool": {

@@ -1,17 +1,18 @@
 import asyncio
 import json
+import os
 import shlex
 import shutil
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
+import astrbot.api.message_components as Comp
 from astrbot.api import AstrBotConfig, FunctionTool, logger
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.message_components import Record, Video
-import astrbot.api.message_components as Comp
-from astrbot.api.star import Context, Star, register
-
+from astrbot.api.star import Context, Star, StarTools, register
 
 SYSTEM_VOICES = (
     {"id": "Chinese (Mandarin)_Mature_Woman", "name": "傲娇御姐", "language": "zh-CN"},
@@ -42,6 +43,11 @@ SYSTEM_VOICES = (
 @dataclass
 class MiniMaxCliTool(FunctionTool):
     name: str = "minimax_cli"
+    action_semantic_capabilities: dict[str, frozenset[str]] = field(
+        default_factory=lambda: {
+            "search": frozenset({"web_research"}),
+        }
+    )
     description: str = (
         "MiniMax CLI 多模态工具。根据用户语境判断是否需要调用，可用于生成文本、图片、视频、音乐、语音、"
         "图像理解、联网搜索、查询余额/登录状态等能力。必须严格填写 action 枚举，不要把自然语言动作写进 action，不要回复 /minimax 帮助文本。"
@@ -204,6 +210,10 @@ class MiniMaxCliPlugin(Star):
         super().__init__(context)
         self.config = config
         self.plugin_dir = Path(__file__).resolve().parent
+        self.mmx_config_dir: Path | None = None
+        if self.config.get("auto_login", True) and self.config.get("api_key"):
+            self.mmx_config_dir = StarTools.get_data_dir(self.name) / "mmx"
+            self.mmx_config_dir.mkdir(parents=True, exist_ok=True)
         self.mmx_path = shutil.which("mmx")
         self.npm_path = shutil.which("npm") or shutil.which("npm.cmd")
         self.background_tasks = set()
@@ -228,8 +238,15 @@ class MiniMaxCliPlugin(Star):
                 await self._run_mmx(
                     "auth", "login", "--api-key", self.config["api_key"]
                 )
-            except Exception:
-                logger.exception("MiniMax CLI 自动登录失败")
+            except Exception as exc:
+                detail = " ".join(self._format_error_message("status", exc).split())
+                if len(detail) > 500:
+                    detail = detail[:497] + "..."
+                logger.error(
+                    "MiniMax CLI 自动登录失败: error_type=%s detail=%s",
+                    type(exc).__name__,
+                    detail,
+                )
 
     @filter.command("minimax")
     async def minimax(self, event: AstrMessageEvent):
@@ -1422,7 +1439,7 @@ class MiniMaxCliPlugin(Star):
 
     def _build_vision_command(self, prompt: str) -> tuple[str, ...]:
         parts = prompt.split(maxsplit=1)
-        image = parts[0]
+        image = self._normalize_vision_image_reference(parts[0])
         question = parts[1].strip() if len(parts) > 1 else ""
         if image.startswith("file-"):
             command = ["vision", "describe", "--file-id", image]
@@ -1431,6 +1448,21 @@ class MiniMaxCliPlugin(Star):
         if question:
             command.extend(["--prompt", question])
         return tuple(command)
+
+    @staticmethod
+    def _normalize_vision_image_reference(image: str) -> str:
+        """Convert file URIs to paths accepted by mmx vision describe."""
+        value = (image or "").strip()
+        if not value.startswith("file:"):
+            return value
+
+        parsed = urlparse(value)
+        path = unquote(parsed.path or "")
+        if parsed.netloc:
+            path = f"//{parsed.netloc}{path}"
+        if len(path) >= 3 and path[0] == "/" and path[2] == ":":
+            path = path[1:]
+        return str(Path(path))
 
     async def _install_mmx_cli(self) -> None:
         if not self.npm_path:
@@ -1456,11 +1488,16 @@ class MiniMaxCliPlugin(Star):
     async def _run_command(
         self, executable: str, *args: str, timeout: int
     ) -> tuple[str, str]:
+        env = None
+        if self.mmx_config_dir is not None:
+            env = os.environ.copy()
+            env["MMX_CONFIG_DIR"] = str(self.mmx_config_dir)
         process = await asyncio.create_subprocess_exec(
             executable,
             *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=env,
         )
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
         stdout_text = stdout.decode("utf-8", errors="replace")
